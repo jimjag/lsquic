@@ -15,7 +15,6 @@ enum swtp_status;
 struct frame_gen_ctx;
 struct data_frame;
 enum quic_frame_type;
-struct push_promise;
 union hblock_ctx;
 struct lsquic_packet_out;
 struct lsquic_send_ctl;
@@ -106,7 +105,6 @@ struct hq_filter
 #endif
 #define hqfi_type hqfi_vint2_state.vr2s_one
     struct varint_read_state    hqfi_vint1_state;
-#define hqfi_push_id hqfi_vint1_state.value
     enum {
         HQFI_FLAG_UNUSED_0      = 1 << 0,
         HQFI_FLAG_ERROR         = 1 << 1,
@@ -233,8 +231,8 @@ enum stream_flags {
     STREAM_FRAMES_ELIDED= 1 << 15,
     STREAM_FORCE_FINISH = 1 << 16,  /* Replaces FIN sent and received */
     STREAM_ONNEW_DONE   = 1 << 17,  /* on_new_stream has been called */
-    STREAM_PUSHING      = 1 << 18,
-    STREAM_NOPUSH       = 1 << 19,  /* Disallow further push promises */
+    STREAM_UNUSED18     = 1 << 18,  /* Unused */
+    STREAM_UNUSED19     = 1 << 19,  /* Unused */
     STREAM_GOAWAY_IN    = 1 << 20,  /* Incoming GOAWAY has been processed */
     STREAM_SS_SENT      = 1 << 21,  /* STOP_SENDING sent */
     STREAM_RST_ACKED    = 1 << 22,  /* Packet containing RST has been acked */
@@ -248,9 +246,7 @@ enum stream_flags {
 };
 
 
-/* By keeping this number low, we make sure that the code to allocate HQ
- * frames dynamically gets exercised whenever push promises are sent.
- */
+/* Two inline HQ frames cover the vast majority of cases. */
 #define NUM_ALLOCED_HQ_FRAMES 2
 
 
@@ -314,7 +310,6 @@ struct lsquic_stream
 
     STAILQ_HEAD(, uncompressed_headers)
                                     uh;
-    struct uncompressed_headers    *push_req;
     union hblock_ctx               *sm_hblock_ctx;
 
     unsigned char                  *sm_buf;
@@ -341,15 +336,6 @@ struct lsquic_stream
 
     /* This element is optional */
     const struct stream_filter_if  *sm_sfi;
-
-    /* sm_promise and sm_promises are never used at the same time and can
-     * be combined into a union should space in this struct become tight.
-     */
-    /* Push promise that engendered this push stream */
-    struct push_promise            *sm_promise;
-
-    /* Push promises sent on this stream */
-    SLIST_HEAD(, push_promise)      sm_promises;
 
     uint64_t                        sm_last_frame_off;
 
@@ -466,10 +452,6 @@ lsquic_stream_frame_in (lsquic_stream_t *, struct stream_frame *frame);
  */
 int
 lsquic_stream_uh_in (lsquic_stream_t *, struct uncompressed_headers *);
-
-void
-lsquic_stream_push_req (lsquic_stream_t *,
-                        struct uncompressed_headers *push_req);
 
 int
 lsquic_stream_rst_in (lsquic_stream_t *, uint64_t offset, uint64_t error_code);
@@ -638,12 +620,6 @@ lsquic_stream_max_stream_data_sent (struct lsquic_stream *);
 
 void
 lsquic_stream_qdec_unblocked (struct lsquic_stream *);
-
-int
-lsquic_stream_can_push (const struct lsquic_stream *);
-
-int
-lsquic_stream_push_promise (struct lsquic_stream *, struct push_promise *);
 
 void
 lsquic_stream_force_finish (struct lsquic_stream *);
